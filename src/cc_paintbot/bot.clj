@@ -1,18 +1,20 @@
 (ns cc-paintbot.bot
   (:require [org.httpkit.client :as http]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io])
   (:import (java.net URLEncoder URLDecoder)))
 
 (def url (or (System/getenv "PAINTBOTS_URL")
-             "http://localhost:31173"))
+             "http://172.24.245.53:31173"))
 
 (def integer-fields #{:x :y})
 
+(def bot-name "R2D2")
+
 ;; Bot interface to server
 (defn- post [& {:as args}]
-  (let [_ (println "args " args)
-        {:keys [status body headers] :as _resp} @(http/post url {:form-params args :as :text})
-        _ (println "status " _resp)]
+  (let [{:keys [status body headers] :as _resp} @(http/post url {:form-params args :as :text})]
     (if (>= status 400)
       (throw (ex-info "Unexpected status code" {:status status :body body}))
       (if (= (:content-type headers) "application/x-www-form-urlencoded")
@@ -29,6 +31,14 @@
 (defn register [name]
   {:name name :id (post :register name)})
 
+(defn- get-bot [name]
+  (if (.exists (io/as-file (str name ".edn")))
+    (edn/read-string (slurp (str name ".edn")))
+    (do (->> (register (str name (System/currentTimeMillis)))
+             prn-str
+             (spit (str name ".edn")))
+        (get-bot name))))
+
 (defn move [bot dir]
   (merge
     bot
@@ -39,6 +49,10 @@
 
 (defn color [bot c]
   (merge bot (post :id (:id bot) :color c)))
+
+(defn say [msg & [bot name]]
+  (let [bot (or bot (get-bot name))]
+    (post :id (:id bot) :msg msg)))
 
 (defn- rotate [dir]
   (case dir
@@ -64,7 +78,7 @@
            ;; start with a random color in palette
            colors (drop (rand-int 10) (cycle palette))]
       (cond
-        (nil? dir) :done
+        (nil? dir) bot
 
         (= :change-col dir)
         (recur (color bot (str (first colors)))
@@ -80,7 +94,7 @@
   (let [dx (- (:x bot) to-x)
         dy (- (:y bot) to-y)
 
-        ;; move randomly either x or y (to look cool ;)
+        ;; move randomly either x or y (to look cool ;)L
         r (rand-int 2)]
     (cond
       (and (zero? dx) (zero? dy))
@@ -95,8 +109,18 @@
       :else
       (recur bot to-x to-y))))
 
-(defn -main [& args]
-  (-> (register (str "dragon" (System/currentTimeMillis)))
-      (move "LEFT")
-      (move-to (+ 75 (rand-int 10)) (+ 45 (rand-int 10)))
+(defn masterpiece [bot]
+  (-> bot
+      (move "RIGHT")
+      (move-to 200 100)
+      ;(move-to (+ 75 (rand-int 10)) (+ 45 (rand-int 10)))
       (draw 9 4)))
+
+(defn save-bot-state [bot name]
+  (spit (str name ".edn") (prn-str bot))
+  :done)
+
+(defn -main [& [args]]
+  (-> (get-bot (or (:name args) bot-name))
+      masterpiece
+      (save-bot-state (or (:name args) bot-name))))
