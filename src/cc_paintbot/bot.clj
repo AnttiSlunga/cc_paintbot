@@ -2,15 +2,17 @@
   (:require [org.httpkit.client :as http]
             [clojure.string :as str]
             [clojure.edn :as edn]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.math :as math])
   (:import (java.net URLEncoder URLDecoder)))
 
 (def url (or (System/getenv "PAINTBOTS_URL")
-             "http://172.24.245.53:31173"))
+             ;;"http://172.24.245.53:31173"
+             "http://localhost:31173"))
 
 (def integer-fields #{:x :y})
 
-(def bot-name "R2D2")
+(def bot-name "chachachaa")
 
 ;; Bot interface to server
 (defn- post [& {:as args}]
@@ -109,12 +111,82 @@
       :else
       (recur bot to-x to-y))))
 
+(defn line-to [bot to-x to-y]
+  (let [dx (- (:x bot) to-x)
+        dy (- (:y bot) to-y)
+
+        ;; move randomly either x or y (to look cool ;)L
+        r (rand-int 2)]
+    (cond
+      (and (zero? dx) (zero? dy))
+      bot
+
+      (and (= 0 r) (not= 0 dx))
+      (recur (-> bot paint (move (if (neg? dx) "RIGHT" "LEFT"))) to-x to-y)
+
+      (and (= 1 r) (not= 0 dy))
+      (recur (-> bot paint (move (if (neg? dy) "DOWN" "UP"))) to-x to-y)
+
+      :else
+      (recur bot to-x to-y))))
+
+;; x1 = r * cos(angle * PI / 180);
+(defn circle [bot r]
+  (let [sx (math/round (+ (:x bot) (-> (* 1 math/PI) (/ 18) math/cos (* r))))
+        sy (math/round (+ (:y bot) (-> (* 1 math/PI) (/ 18) math/sin (* r))))]
+    (loop [bot bot
+           i 1]
+      (if (= i 37)
+        bot
+        (recur (let [x (math/round (+ (:x bot) (-> (* i math/PI) (/ 18) math/cos (* r))))
+                     y (math/round (+ (:y bot) (-> (* i math/PI) (/ 18) math/sin (* r))))]
+                 (if (= i 36)
+                   (-> bot paint (line-to sx sy))
+                   (-> bot paint (line-to x y))))
+               (inc i))))))
+
 (defn masterpiece [bot]
   (-> bot
       (move "RIGHT")
-      (move-to 200 100)
+      (move-to 50 50)
       ;(move-to (+ 75 (rand-int 10)) (+ 45 (rand-int 10)))
       (draw 9 4)))
+
+(defn cha [bot]
+  (-> bot
+      (color "b")
+      (move-to 90 50)
+      (circle 1)
+      (move-to 100 42)
+      (circle 1)
+      (move-to 110 36)
+      (circle 1)
+      (move-to 120 34)
+      (circle 1)
+      (move-to 130 36)
+      (circle 1)
+      (move-to 140 42)
+      (circle 1)
+      (move-to 150 50)
+      (circle 1)
+
+      ;;Head
+      (move-to 120 15)
+      (color "a")
+      (circle 1.7)
+
+      (color 1)
+      (move-to 118 15)
+      (line-to 118 18)
+      (move "RIGHT")
+      (line-to 119 19)
+      (move "RIGHT")
+      (line-to 120 17)
+      (move "RIGHT")
+      (line-to 121 17)
+      (move "RIGHT")
+      (line-to 122 19)
+      ))
 
 (defn save-bot-state [bot name]
   (spit (str name ".edn") (prn-str bot))
@@ -122,5 +194,7 @@
 
 (defn -main [& [args]]
   (-> (get-bot (or (:name args) bot-name))
-      masterpiece
+      (cha)
+      ;(move-to 20 20)
+      ;(circle 3)
       (save-bot-state (or (:name args) bot-name))))
